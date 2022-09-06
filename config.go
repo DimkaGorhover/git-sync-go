@@ -24,13 +24,47 @@ const (
 var (
 	ErrBasicAuthUserIsMissing     = errors.New(`user is not configured for basic config`)
 	ErrBasicAuthPasswordIsMissing = errors.New(`password is not configured for basic config`)
+
+	ErrNameIsMissing   = errors.New(`task name is missing`)
+	ErrNameIsNotUnique = errors.New(`task name is not unique`)
+	ErrPathIsMissing   = errors.New(`task path is missing`)
+	ErrPathIsNotUnique = errors.New(`task path is not unique`)
+
+	ErrGitRepoUrlIsNotValid           = errors.New(`git repo url is not valid`)
+	ErrGitRepoUrlSchemaIsNotSupported = errors.New(`git repo url schema is not supported`)
 )
 
+type Validatable interface {
+	Validate() error
+}
+
 type Config struct {
+	Validatable
 	Tasks []*TaskConfig `yaml:"tasks" json:"tasks"`
 }
 
+func (c *Config) Validate() error {
+
+	names := make(map[string]bool, len(c.Tasks))
+	paths := make(map[string]bool, len(c.Tasks))
+
+	for _, taskConfig := range c.Tasks {
+		err := taskConfig.Validate()
+		if err != nil {
+			return err
+		}
+		if names[taskConfig.Name] {
+			return ErrNameIsNotUnique
+		}
+		if paths[taskConfig.Path] {
+			return ErrPathIsNotUnique
+		}
+	}
+	return nil
+}
+
 type TaskConfig struct {
+	Validatable
 	Name       string `yaml:"name" json:"name"`
 	Url        string `yaml:"url" json:"url"`
 	Path       string `yaml:"path" json:"path"`
@@ -50,10 +84,75 @@ type TaskConfig struct {
 	Progress        bool  `yaml:"progress,omitempty" json:"progress,omitempty"`
 }
 
+func (c *TaskConfig) Validate() error {
+	if len(c.Name) == 0 {
+		return ErrNameIsMissing
+	}
+	if len(c.Path) == 0 {
+		return ErrPathIsMissing
+	}
+	parsedUrl, err := url.Parse(c.Url)
+	if err != nil {
+		return ErrGitRepoUrlIsNotValid
+	}
+	urlScheme := parsedUrl.Scheme
+	if urlScheme != `http` && urlScheme != `https` {
+		return ErrGitRepoUrlSchemaIsNotSupported
+	}
+	if len(c.Path) == 0 {
+		return fmt.Errorf(`target directory (path) is not set`)
+	}
+	if c.IntervalSeconds < 20 {
+		c.IntervalSeconds = 20
+	}
+	if (len(c.Reference.Branch) > 0) && (len(c.Reference.Tag) > 0) {
+		return fmt.Errorf(`you cannot configure branch and tag simultaneously`)
+	}
+	if c.Auth != nil {
+		if err = c.Auth.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 type Auth struct {
+	Validatable
 	BearerToken *Secret `yaml:"bearerToken,omitempty" json:"bearerToken,omitempty"`
 	BasicToken  *Secret `yaml:"basicToken,omitempty" json:"basicToken,omitempty"`
 	Basic       *Basic  `yaml:"basic,omitempty" json:"basic,omitempty"`
+}
+
+func (auth *Auth) Validate() error {
+	count := 0
+	if auth.BearerToken != nil {
+		count++
+	}
+	if auth.BasicToken != nil {
+		count++
+	}
+	if auth.Basic != nil {
+		count++
+	}
+	if count > 1 {
+		return errors.New(`auth -> to many configurations`)
+	}
+	if auth.BearerToken != nil {
+		if err := auth.BearerToken.Validate(); err != nil {
+			return fmt.Errorf(`auth -> BearerToken -> %s`, err.Error())
+		}
+	}
+	if auth.BasicToken != nil {
+		if err := auth.BasicToken.Validate(); err != nil {
+			return fmt.Errorf(`auth -> BasicToken -> %s`, err.Error())
+		}
+	}
+	if auth.Basic != nil {
+		if err := auth.Basic.Validate(); err != nil {
+			return fmt.Errorf(`auth -> Basic -> %s`, err.Error())
+		}
+	}
+	return nil
 }
 
 type Basic struct {
@@ -61,7 +160,23 @@ type Basic struct {
 	Password *Secret `yaml:"password,omitempty" json:"password,omitempty"`
 }
 
-func (auth Auth) GitOpts() ([]string, error) {
+func (basic *Basic) Validate() error {
+	if basic.User == nil {
+		return errors.New(`user -> not set`)
+	}
+	if basic.Password == nil {
+		return errors.New(`password -> not set`)
+	}
+	if err := basic.User.Validate(); err != nil {
+		return fmt.Errorf(`user -> %s`, err.Error())
+	}
+	if err := basic.Password.Validate(); err != nil {
+		return fmt.Errorf(`password -> %s`, err.Error())
+	}
+	return nil
+}
+
+func (auth *Auth) GitOpts() ([]string, error) {
 	if auth.BearerToken != nil {
 		token, err := auth.BearerToken.GetValue()
 		if err != nil {
@@ -117,7 +232,7 @@ func (auth Auth) GitOpts() ([]string, error) {
 	return []string{}, nil
 }
 
-func (auth Auth) GitAuth() (gitTransport.AuthMethod, error) {
+func (auth *Auth) GitAuth() (gitTransport.AuthMethod, error) {
 
 	if auth.BearerToken != nil {
 		token, err := auth.BearerToken.GetValue()
@@ -166,11 +281,63 @@ func (auth Auth) GitAuth() (gitTransport.AuthMethod, error) {
 }
 
 type Secret struct {
-	Value     string `yaml:"value,omitempty" json:"value,omitempty"`
-	ValueFrom struct {
-		Env  string `yaml:"env,omitempty" json:"env,omitempty"`
-		File string `yaml:"file,omitempty" json:"file,omitempty"`
-	} `yaml:"valueFrom" json:"valueFrom"`
+	Value     string           `yaml:"value,omitempty" json:"value,omitempty"`
+	ValueFrom *SecretValueFrom `yaml:"valueFrom" json:"valueFrom"`
+}
+
+func (secret *Secret) Validate() error {
+	count := 0
+	if len(secret.Value) > 0 {
+		count++
+	}
+	if secret.ValueFrom != nil {
+		count++
+	}
+	if count != 1 {
+		return errors.New(`secret -> value end valueFrom configs cannot be set simultaneously`)
+	}
+	if secret.ValueFrom != nil {
+		if err := secret.ValueFrom.Validate(); err != nil {
+			return fmt.Errorf(`valueFrom -> %s`, err.Error())
+		}
+	}
+	return nil
+}
+
+type SecretValueFrom struct {
+	Env  string `yaml:"env,omitempty" json:"env,omitempty"`
+	File string `yaml:"file,omitempty" json:"file,omitempty"`
+}
+
+func (valueFrom *SecretValueFrom) Validate() error {
+	count := 0
+	env := valueFrom.Env
+	if len(env) > 0 {
+		count++
+	}
+	file := valueFrom.File
+	if len(file) > 0 {
+		count++
+	}
+	if count != 1 {
+		return errors.New(`env end file configs cannot be set simultaneously`)
+	}
+	if len(env) > 0 {
+		_, found := os.LookupEnv(env)
+		if !found {
+			return fmt.Errorf(`env variable %s is not set`, env)
+		}
+	}
+	if len(file) > 0 {
+		stat, err := os.Stat(file)
+		if err != nil {
+			return fmt.Errorf(`file %s is not found`, file)
+		}
+		if stat.IsDir() {
+			return fmt.Errorf(`file %s is directory`, file)
+		}
+	}
+	return nil
 }
 
 func (secret *Secret) GetValue() (string, error) {

@@ -61,6 +61,19 @@ var (
 		},
 	}
 
+	configFileFlag = cli.StringFlag{
+		Name:       `config`,
+		Required:   true,
+		Usage:      `path to the yaml config file`,
+		Category:   `config`,
+		Value:      ``,
+		HasBeenSet: true,
+		EnvVars: []string{
+			`CONFIG`,
+			`GIT_SYNC_CONFIG`,
+		},
+	}
+
 	startServerFlag = cli.BoolFlag{
 		Name:        `server`,
 		Required:    false,

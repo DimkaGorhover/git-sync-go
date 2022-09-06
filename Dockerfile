@@ -73,4 +73,3 @@ FROM ${RELEASE_IMAGE} as release
 LABEL maintainer="Dmytro Horkhover <gd.mail.89@gmail.com>"
 COPY --from=build /git-sync /git-sync
 ENTRYPOINT [ "/git-sync" ]
-CMD [ "--version" ]

@@ -12,8 +12,8 @@ import (
 
 var (
 	AppVersion = "development"
-	appErrChan = make(chan error)
-	scheduler  = NewAppScheduler(appErrChan)
+	appErrChan chan error
+	scheduler  Scheduler
 )
 
 func main() {
@@ -22,7 +22,6 @@ func main() {
 		Version:              AppVersion,
 		EnableBashCompletion: true,
 		ErrWriter:            NewLogrusWriter(log.ErrorLevel),
-		Writer:               NewLogrusWriter(log.DebugLevel),
 		Authors: []*cli.Author{
 			{
 				Name:  `Dmytro Horkhover`,
@@ -34,6 +33,7 @@ func main() {
 			&logFormatFlag,
 			&logPrettyFlag,
 			&logColorsFlag,
+			&configFileFlag,
 			&startServerFlag,
 			&serverPortFlag,
 		},
@@ -48,24 +48,30 @@ func main() {
 		Action: cliAction,
 	}
 
-	defer func() {
-		_ = scheduler.Close()
-		log.Info(`task scheduler has been closed`)
-	}()
-
-	if err := cliApp.Run(os.Args); err != nil && err != ErrAppIsDone {
+	err := cliApp.Run(os.Args)
+	if err != nil && err != ErrAppIsDone {
 		log.WithError(err).Fatal(`app exit error`)
 	}
 }
 
 func cliAction(c *cli.Context) error {
 
+	appErrChan = make(chan error)
+	scheduler = NewAppScheduler(appErrChan)
+
+	defer func() {
+		_ = scheduler.Close()
+		log.Debug(`task scheduler has been closed`)
+	}()
+
 	serverPort := c.Int(serverPortFlag.Name)
 	if serverPort < 1 {
 		return fmt.Errorf(`web server port cannot be less than 1`)
 	}
 
-	scheduleTasks()
+	if err := scheduleTasks(c); err != nil {
+		return err
+	}
 
 	if c.Bool(startServerFlag.Name) {
 		scheduler.Execute(func() error {
@@ -75,27 +81,54 @@ func cliAction(c *cli.Context) error {
 
 	return scheduler.WaitError()
 }
-func scheduleTasks() {
-	scheduler.Execute(func() error {
-		file, err := os.Open("tasks.yaml")
-		if err != nil {
-			return err
-		}
+func scheduleTasks(c *cli.Context) error {
 
-		defer func() {
-			_ = file.Close()
-		}()
+	path := c.String(configFileFlag.Name)
+	stat, err := os.Stat(path)
+	if err != nil || stat.IsDir() {
 
-		config := &Config{}
-		err = yaml.NewDecoder(file).Decode(config)
-		if err != nil {
-			return err
+		log.WithError(err).WithFields(log.Fields{
+			`path`: path,
+		}).Error(`config file is not found`)
+
+		return err
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+
+		log.WithError(err).WithFields(log.Fields{
+			`path`: path,
+		}).Error(`unable to open config file`)
+
+		return err
+	}
+
+	defer func() {
+		_ = file.Close()
+		if log.IsLevelEnabled(log.TraceLevel) {
+			log.WithFields(log.Fields{
+				`path`: path,
+			}).Tracef(`file has been closed`)
 		}
-		for _, taskConfig := range config.Tasks {
-			scheduleTask(taskConfig)
-		}
-		return nil
-	})
+	}()
+
+	config := &Config{}
+	err = yaml.NewDecoder(file).Decode(config)
+	if err != nil {
+		return err
+	}
+
+	err = config.Validate()
+	if err != nil {
+		return err
+	}
+
+	for _, taskConfig := range config.Tasks {
+		scheduleTask(taskConfig)
+	}
+
+	return nil
 }
 
 func scheduleTask(tc *TaskConfig) {

@@ -6,7 +6,6 @@ import (
 	"github.com/go-git/go-git/v5"
 	log "github.com/sirupsen/logrus"
 	"io/fs"
-	"net/url"
 	"os"
 	. "registry.fozzy.lan/palefat/git-sync-go/errors"
 )
@@ -173,20 +172,7 @@ func (task *gitSyncTask) CloneOrAttach() error {
 		return ErrGitRepoUrlIsMissing
 	}
 
-	parsedUrl, err := url.Parse(task.config.Url)
-	if err != nil {
-		return ErrGitRepoUrlIsNotValid
-	}
-
-	if parsedUrl.Scheme != `http` && parsedUrl.Scheme != `https` {
-		return ErrGitRepoUrlSchemaIsNotSupported
-	}
-
-	if len(task.config.Path) == 0 {
-		return fmt.Errorf(`GitSyncTask: Target directory (path) is not set`)
-	}
-
-	if err = task.createDir(); err != nil {
+	if err := task.createDir(); err != nil {
 		return err
 	}
 
