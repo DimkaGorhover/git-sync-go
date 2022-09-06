@@ -1,0 +1,166 @@
+{
+  "$schema": "http://json-schema.org/draft-06/schema#",
+  "$ref": "#/definitions/GitSync",
+  "definitions": {
+    "GitSync": {
+      "title": "GitSync",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tasks"
+      ],
+      "properties": {
+        "tasks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Task"
+          }
+        }
+      }
+    },
+    "Task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "url",
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string",
+          "description": "path to the local directory that contains or will contain the git repository"
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "submodules": {
+          "type": "boolean",
+          "default": false
+        },
+        "insecure": {
+          "type": "boolean",
+          "description": "skip TLS verify stage",
+          "default": false
+        },
+        "remoteName": {
+          "type": "string",
+          "default": "origin"
+        },
+        "reference": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "tag": {
+              "type": "string"
+            },
+            "commit": {
+              "type": "string",
+              "deprecationMessage": "is not supported yet :("
+            },
+            "branch": {
+              "type": "string",
+              "description": "git branch short name",
+              "examples": [
+                "master",
+                "main",
+                "dev"
+              ]
+            }
+          }
+        },
+        "auth": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "bearerToken": {
+              "$ref": "#/definitions/Secret"
+            },
+            "basicToken": {
+              "$ref": "#/definitions/Secret"
+            },
+            "basic": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "user",
+                "password"
+              ],
+              "properties": {
+                "user": {
+                  "$ref": "#/definitions/Secret"
+                },
+                "password": {
+                  "$ref": "#/definitions/Secret"
+                }
+              }
+            }
+          }
+        },
+        "intervalSeconds": {
+          "type": "integer",
+          "minimum": 20,
+          "default": 60,
+          "description": "periodic sync interval in seconds"
+        },
+        "runOnce": {
+          "type": "boolean",
+          "deprecationMessage": "is not supported yet :("
+        },
+        "force": {
+          "type": "boolean",
+          "description": "remove directory before clone"
+        },
+        "singleBranch": {
+          "type": "boolean",
+          "description": "git will download only one branch from the remote"
+        },
+        "progress": {
+          "type": "boolean"
+        }
+      }
+    },
+    "Secret": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": "string",
+          "description": "raw value"
+        },
+        "valueFrom": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "take the value from a file or from an env variable",
+          "properties": {
+            "env": {
+              "type": "string",
+              "description": "env variable that contains the value"
+            },
+            "file": {
+              "type": "string",
+              "description": "path to the file with value content",
+              "examples": [
+                "/run/secrets/user",
+                "/run/secrets/password"
+              ]
+            }
+          },
+          "required": [],
+          "title": "ValueFrom"
+        }
+      },
+      "required": [
+      ],
+      "title": "Secret"
+    }
+  }
+}

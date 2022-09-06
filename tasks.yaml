@@ -1,0 +1,14 @@
+---
+tasks:
+  - name: leetcode-go
+    url: https://github.com/DimkaGorhover/leetcode-go.git
+    path: /Volumes/RAMDisk/dags/leetcode-go
+    #depth: 1
+    submodules: true
+    auth: ~
+  - name: leetcode-java
+    url: https://github.com/DimkaGorhover/leetcode-java.git
+    path: /Volumes/RAMDisk/dags/leetcode-java
+    #depth: 1
+    submodules: true
+    auth: ~

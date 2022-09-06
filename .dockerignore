@@ -1,0 +1,12 @@
+.idea
+.git
+.gitignore
+README.md
+LICENSE
+*.yaml
+*.json
+.vscode
+.setting
+.project
+Makefile
+.dockerignore
