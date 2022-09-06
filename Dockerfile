@@ -3,7 +3,8 @@
 ARG GOLANG_VERSION="1.19"
 ARG BUILD_IMAGE="golang:${GOLANG_VERSION}-alpine"
 ARG GOLANGCI_LINT_IMAGE="golangci/golangci-lint:latest"
-ARG RELEASE_IMAGE="scratch"
+ARG ALPINE_VERSION="3.16"
+ARG RELEASE_IMAGE="alpine:${ALPINE_VERSION}"
 
 # =============================================================================
 FROM ${BUILD_IMAGE} as base
@@ -71,5 +72,8 @@ RUN --mount=from=test,src=/cover.out,target=/tmp/cover.out \
 # ============================================================================= 
 FROM ${RELEASE_IMAGE} as release
 LABEL maintainer="Dmytro Horkhover <gd.mail.89@gmail.com>"
+SHELL ["/usr/bin/env", "sh", "-e", "-u" ,"-o", "pipefail", "-o", "errexit", "-o", "nounset", "-c"]
+RUN apk add --no-cache git
 COPY --from=build /git-sync /git-sync
 ENTRYPOINT [ "/git-sync" ]
+CMD [ "--help" ]
